@@ -20,9 +20,10 @@ public:
 
     // 新音频流创建事件
     HRESULT STDMETHODCALLTYPE OnSessionCreated(IAudioSessionControl* NewSession);
-
+    // 注册新音频流创建事件回调函数
+    void RegisterSessionCreateCallback(const std::function<void(CComPtr<IAudioSessionControl>)>& cb);
 private:
-    std::function<void(CComQIPtr<IAudioSessionControl>)> sessionCreatedCallback;
+    std::function<void(CComPtr<IAudioSessionControl>)> sessionCreatedCallback;
     ULONG ref{ 0 };
 };
 

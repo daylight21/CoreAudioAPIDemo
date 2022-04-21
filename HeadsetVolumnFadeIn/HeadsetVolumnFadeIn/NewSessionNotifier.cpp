@@ -54,3 +54,8 @@ HRESULT __stdcall NewSessionNotifier::OnSessionCreated(IAudioSessionControl* New
     }
     return S_OK;
 }
+
+void NewSessionNotifier::RegisterSessionCreateCallback(const std::function<void(CComPtr<IAudioSessionControl>)>& cb)
+{
+    sessionCreatedCallback = cb;
+}

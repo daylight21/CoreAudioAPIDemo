@@ -67,11 +67,10 @@ bool AudioSessionManager::RegNotifierForSessions()
     // 获取会话管理器
     HRESULT hr = device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, NULL, (void**)&sessionManager);
     CHECK_HR_AND_NULLPTR_RETURN(hr, sessionManager, false, "Activate sessionManager failed");
-    // 注册新会话创建事件监听器
-    sessionCreatedNotifier = new (std::nothrow) NewSessionNotifier();
-    CHECK_NULLPTR_RETURN(sessionCreatedNotifier, false, "sessionCreatedNotifier create failed!");
-    hr = sessionManager->RegisterSessionNotification(sessionCreatedNotifier);
-    CHECK_HR_RETURN(hr, false, "RegisterSessionNotification failed");
+    if (RegForNewSessionNotifier()) {
+        LOG_ERROR("RegForNewSessionNotifier failed!");
+        return false;
+    }
     // 获取会话枚举器
     CComPtr<IAudioSessionEnumerator> sessionEnumerator = nullptr;
     hr = sessionManager->GetSessionEnumerator(&sessionEnumerator);
@@ -85,11 +84,37 @@ bool AudioSessionManager::RegNotifierForSessions()
         CComPtr<IAudioSessionControl> sessionControl = nullptr;
         hr = sessionEnumerator->GetSession(i, &sessionControl);
         CHECK_HR_AND_NULLPTR_CONTINUE(hr, sessionEnumerator, "GetSession failed");
-        auto sessionEventNotifier = new (std::nothrow) SessionEventNotifier();
-        CHECK_NULLPTR_CONTINUE(sessionEventNotifier, "Create SessionEventNotifier Failed!");
-        hr = sessionControl->RegisterAudioSessionNotification(sessionEventNotifier);
-        CHECK_HR_CONTINUE(hr, "RegisterAudioSessionNotification failed");
-        sessionPairs.emplace(sessionControl, sessionEventNotifier);
+        if (!RegNotifierForSingleSession(sessionControl)) {
+            LOG_ERROR("RegNotifierForSingleSession Failed!");
+            continue;
+        }
     }
     return true;
+}
+
+bool AudioSessionManager::RegForNewSessionNotifier()
+{
+    // 注册新会话创建事件监听器
+    sessionCreatedNotifier = new (std::nothrow) NewSessionNotifier();
+    CHECK_NULLPTR_RETURN(sessionCreatedNotifier, false, "sessionCreatedNotifier create failed!");
+    sessionCreatedNotifier->RegisterSessionCreateCallback(std::bind(&AudioSessionManager::OnSessionCreated, this, std::placeholders::_1));
+    HRESULT hr = sessionManager->RegisterSessionNotification(sessionCreatedNotifier);
+    CHECK_HR_RETURN(hr, false, "RegisterSessionNotification failed");
+    return true;
+}
+
+bool AudioSessionManager::RegNotifierForSingleSession(CComPtr<IAudioSessionControl> session)
+{
+    CHECK_NULLPTR_RETURN(session, false, "Session is Null!");
+    auto sessionEventNotifier = new (std::nothrow) SessionEventNotifier();
+    CHECK_NULLPTR_RETURN(sessionEventNotifier, false, "Create SessionEventNotifier Failed!");
+    HRESULT hr = session->RegisterAudioSessionNotification(sessionEventNotifier);
+    CHECK_HR_RETURN(hr, false, "RegisterAudioSessionNotification failed");
+    sessionPairs.emplace(session, sessionEventNotifier);
+    return true;
+}
+
+void AudioSessionManager::OnSessionCreated(CComPtr<IAudioSessionControl> session)
+{
+    RegNotifierForSingleSession(session);
 }

@@ -19,6 +19,12 @@ public:
 private:
     // 为当前所有会话注册事件通知器
     bool RegNotifierForSessions();
+    // 添加新音频流事件的监听
+    bool RegForNewSessionNotifier();
+    // 为单个音频流注册事件监听器
+    bool RegNotifierForSingleSession(CComPtr<IAudioSessionControl> session);
+    // 新音频流事件回调函数
+    void OnSessionCreated(CComPtr<IAudioSessionControl> session);
 
     CComPtr<IAudioSessionManager2> sessionManager{ nullptr };
     CComPtr<IMMDevice> device{ nullptr };
