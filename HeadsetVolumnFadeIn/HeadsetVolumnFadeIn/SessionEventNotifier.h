@@ -45,7 +45,8 @@ public:
     // 音频流断开连接事件
     HRESULT STDMETHODCALLTYPE OnSessionDisconnected(
         _In_  AudioSessionDisconnectReason DisconnectReason) override;
-
+    // 注册音频流状态改变回调函数
+    void RegisterSessionStateChangeCallback(const std::function<void(AudioSessionState)>& cb);
 private:
     std::function<void(AudioSessionState)> sessionStateChangeCallback;
     ULONG ref{ 0 };

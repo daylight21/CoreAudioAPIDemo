@@ -108,6 +108,7 @@ bool AudioSessionManager::RegNotifierForSingleSession(CComPtr<IAudioSessionContr
     CHECK_NULLPTR_RETURN(session, false, "Session is Null!");
     auto sessionEventNotifier = new (std::nothrow) SessionEventNotifier();
     CHECK_NULLPTR_RETURN(sessionEventNotifier, false, "Create SessionEventNotifier Failed!");
+    sessionEventNotifier->RegisterSessionStateChangeCallback(std::bind(&AudioSessionManager::OnSessionStateChange, this, std::placeholders::_1));
     HRESULT hr = session->RegisterAudioSessionNotification(sessionEventNotifier);
     CHECK_HR_RETURN(hr, false, "RegisterAudioSessionNotification failed");
     sessionPairs.emplace(session, sessionEventNotifier);
@@ -117,4 +118,12 @@ bool AudioSessionManager::RegNotifierForSingleSession(CComPtr<IAudioSessionContr
 void AudioSessionManager::OnSessionCreated(CComPtr<IAudioSessionControl> session)
 {
     RegNotifierForSingleSession(session);
+}
+
+void AudioSessionManager::OnSessionStateChange(AudioSessionState state)
+{
+    if (state == AudioSessionStateActive) {
+        // TODO 判断音量，并作出调整
+        LOG_DEBUG("Session Active");
+    }
 }

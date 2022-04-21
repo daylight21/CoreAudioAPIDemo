@@ -25,6 +25,8 @@ private:
     bool RegNotifierForSingleSession(CComPtr<IAudioSessionControl> session);
     // 新音频流事件回调函数
     void OnSessionCreated(CComPtr<IAudioSessionControl> session);
+    // 音频流状态改变事件回调函数
+    void OnSessionStateChange(AudioSessionState state);
 
     CComPtr<IAudioSessionManager2> sessionManager{ nullptr };
     CComPtr<IMMDevice> device{ nullptr };

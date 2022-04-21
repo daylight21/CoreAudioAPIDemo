@@ -88,3 +88,8 @@ HRESULT __stdcall SessionEventNotifier::OnSessionDisconnected(AudioSessionDiscon
     LOG_DEBUG("OnSessionDisconnected Occured");
     return S_OK;
 }
+
+void SessionEventNotifier::RegisterSessionStateChangeCallback(const std::function<void(AudioSessionState)>& cb)
+{
+    sessionStateChangeCallback = cb;
+}
