@@ -36,11 +36,9 @@ bool AudioSessionManager::Init()
     CHECK_HR_AND_NULLPTR_RETURN(hr, enumerator, false, "CoCreateInstance failed");
     hr = enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &device);
     CHECK_HR_AND_NULLPTR_RETURN(hr, device, false, "GetDefaultAudioEndpoint failed");
-
     if (!RegNotifierForSessions()) {
         LOG_ERROR("RegNotifierForSessions Failed!");
     }
-
     return true;
 }
 
@@ -67,7 +65,7 @@ bool AudioSessionManager::RegNotifierForSessions()
     // 获取会话管理器
     HRESULT hr = device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, NULL, (void**)&sessionManager);
     CHECK_HR_AND_NULLPTR_RETURN(hr, sessionManager, false, "Activate sessionManager failed");
-    if (RegForNewSessionNotifier()) {
+    if (!RegForNewSessionNotifier()) {
         LOG_ERROR("RegForNewSessionNotifier failed!");
         return false;
     }
