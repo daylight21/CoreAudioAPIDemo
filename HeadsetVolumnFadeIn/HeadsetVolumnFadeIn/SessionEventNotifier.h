@@ -1,12 +1,15 @@
 #pragma once
 #include <audiopolicy.h>
 #include <functional>
+#include <string>
 
+using SessionStateChangeCallback = std::function<void(AudioSessionState, const std::wstring&)>;
 class SessionEventNotifier :
     public IAudioSessionEvents
 {
 public:
-    SessionEventNotifier();
+    SessionEventNotifier(const std::wstring& id);
+    SessionEventNotifier() = delete;
     ~SessionEventNotifier();
 
     // 重写接口
@@ -46,8 +49,9 @@ public:
     HRESULT STDMETHODCALLTYPE OnSessionDisconnected(
         _In_  AudioSessionDisconnectReason DisconnectReason) override;
     // 注册音频流状态改变回调函数
-    void RegisterSessionStateChangeCallback(const std::function<void(AudioSessionState)>& cb);
+    void RegisterSessionStateChangeCallback(const SessionStateChangeCallback& cb);
 private:
-    std::function<void(AudioSessionState)> sessionStateChangeCallback;
+    SessionStateChangeCallback sessionStateChangeCallback;
+    std::wstring sessionId;
     ULONG ref{ 0 };
 };

@@ -104,10 +104,19 @@ bool AudioSessionManager::RegForNewSessionNotifier()
 bool AudioSessionManager::RegNotifierForSingleSession(CComPtr<IAudioSessionControl> session)
 {
     CHECK_NULLPTR_RETURN(session, false, "Session is Null!");
-    auto sessionEventNotifier = new (std::nothrow) SessionEventNotifier();
+    // 获取sessionID
+    CComPtr<IAudioSessionControl2> sessionControl2 = nullptr;
+    HRESULT hr = session->QueryInterface(&sessionControl2);
+    CHECK_HR_AND_NULLPTR_RETURN(hr, sessionControl2, false, "Get SessionControl2 Failed!");
+    LPWSTR id = {0};
+    hr = sessionControl2->GetSessionInstanceIdentifier(&id);
+    CHECK_HR_RETURN(hr, false, "GetSessionInstanceIdentifier Failed!");
+    std::wstring sessionId(id);
+    // 注册音频流状态改变事件回调
+    auto sessionEventNotifier = new (std::nothrow) SessionEventNotifier(sessionId);
     CHECK_NULLPTR_RETURN(sessionEventNotifier, false, "Create SessionEventNotifier Failed!");
-    sessionEventNotifier->RegisterSessionStateChangeCallback(std::bind(&AudioSessionManager::OnSessionStateChange, this, std::placeholders::_1));
-    HRESULT hr = session->RegisterAudioSessionNotification(sessionEventNotifier);
+    sessionEventNotifier->RegisterSessionStateChangeCallback(std::bind(&AudioSessionManager::OnSessionStateChange, this, std::placeholders::_1, std::placeholders::_2));
+    hr = session->RegisterAudioSessionNotification(sessionEventNotifier);
     CHECK_HR_RETURN(hr, false, "RegisterAudioSessionNotification failed");
     sessionPairs.emplace(session, sessionEventNotifier);
     return true;
@@ -118,10 +127,11 @@ void AudioSessionManager::OnSessionCreated(CComPtr<IAudioSessionControl> session
     RegNotifierForSingleSession(session);
 }
 
-void AudioSessionManager::OnSessionStateChange(AudioSessionState state)
+void AudioSessionManager::OnSessionStateChange(AudioSessionState state, const std::wstring& sessionId)
 {
     if (state == AudioSessionStateActive) {
         // TODO 判断音量，并作出调整
-        LOG_DEBUG("Session Active");
+        LOG_DEBUG("Session Active!");
+        // 需要通过SessionId知道当前Active的Session是哪个
     }
 }

@@ -2,7 +2,7 @@
 #include "SessionEventNotifier.h"
 #include "Logger.h"
 
-SessionEventNotifier::SessionEventNotifier()
+SessionEventNotifier::SessionEventNotifier(const std::wstring& id) : sessionId(id)
 {
     LOG_DEBUG("SessionEventNotifier Created");
 }
@@ -78,7 +78,7 @@ HRESULT __stdcall SessionEventNotifier::OnStateChanged(AudioSessionState NewStat
 {
     LOG_DEBUG("OnStateChanged Occured");
     if (sessionStateChangeCallback != nullptr) {
-        sessionStateChangeCallback(NewState);
+        sessionStateChangeCallback(NewState, sessionId);
     }
     return S_OK;
 }
@@ -89,7 +89,7 @@ HRESULT __stdcall SessionEventNotifier::OnSessionDisconnected(AudioSessionDiscon
     return S_OK;
 }
 
-void SessionEventNotifier::RegisterSessionStateChangeCallback(const std::function<void(AudioSessionState)>& cb)
+void SessionEventNotifier::RegisterSessionStateChangeCallback(const SessionStateChangeCallback& cb)
 {
     sessionStateChangeCallback = cb;
 }
