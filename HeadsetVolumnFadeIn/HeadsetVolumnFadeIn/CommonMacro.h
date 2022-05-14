@@ -6,6 +6,12 @@ if (hr != S_OK) { \
     return state; \
 }
 
+#define CHECK_HR(hr, str) \
+if (hr != S_OK) { \
+    LOG_ERROR(str); \
+    return; \
+}
+
 #define CHECK_HR_CONTINUE(hr, str) \
 if (hr != S_OK) { \
     LOG_ERROR(str); \
@@ -27,11 +33,23 @@ if (ptr == nullptr) { \
 #define CHECK_HR_AND_NULLPTR_RETURN(hr, ptr, state, str) \
 if (hr != S_OK || ptr == nullptr) { \
     LOG_ERROR(str); \
-    return state; \
+        return state; \
+}
+
+#define CHECK_HR_AND_NULLPTR(hr, ptr, str) \
+if (hr != S_OK || ptr == nullptr) { \
+    LOG_ERROR(str); \
+        return; \
 }
 
 #define CHECK_HR_AND_NULLPTR_CONTINUE(hr, ptr, str) \
 if (hr != S_OK || ptr == nullptr) { \
     LOG_ERROR(str); \
     continue; \
+}
+
+#define CHECK_MAP_CONTAINS_KEY_RETURN(map, key) \
+if (map.count(key) == 0) { \
+    LOG_WARNING("map don't have key"); \
+    return; \
 }

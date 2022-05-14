@@ -55,6 +55,7 @@ bool AudioSessionManager::Uninit()
         CHECK_HR_CONTINUE(hr, "UnregisterAudioSessionNotification Failed!");
     }
     sessionPairs.clear();
+    sessionMap.clear();
     device = nullptr;
     enumerator = nullptr;
     return true;
@@ -115,10 +116,11 @@ bool AudioSessionManager::RegNotifierForSingleSession(CComPtr<IAudioSessionContr
     // 注册音频流状态改变事件回调
     auto sessionEventNotifier = new (std::nothrow) SessionEventNotifier(sessionId);
     CHECK_NULLPTR_RETURN(sessionEventNotifier, false, "Create SessionEventNotifier Failed!");
+    sessionMap.emplace(sessionId, sessionControl2);
     sessionEventNotifier->RegisterSessionStateChangeCallback(std::bind(&AudioSessionManager::OnSessionStateChange, this, std::placeholders::_1, std::placeholders::_2));
-    hr = session->RegisterAudioSessionNotification(sessionEventNotifier);
+    hr = sessionControl2->RegisterAudioSessionNotification(sessionEventNotifier);
     CHECK_HR_RETURN(hr, false, "RegisterAudioSessionNotification failed");
-    sessionPairs.emplace(session, sessionEventNotifier);
+    sessionPairs.emplace(sessionControl2, sessionEventNotifier);
     return true;
 }
 
@@ -129,9 +131,57 @@ void AudioSessionManager::OnSessionCreated(CComPtr<IAudioSessionControl> session
 
 void AudioSessionManager::OnSessionStateChange(AudioSessionState state, const std::wstring& sessionId)
 {
-    if (state == AudioSessionStateActive) {
-        // TODO 判断音量，并作出调整
-        LOG_DEBUG("Session Active!");
-        // 需要通过SessionId知道当前Active的Session是哪个
+    switch (state) {
+    case AudioSessionStateActive:
+        DealWithSessionActive(sessionId);
+        break;
+    case AudioSessionStateInactive:
+        DealWithSessionInactive(sessionId);
+        break;
+    case AudioSessionStateExpired:
+        DealWithSessionExpired(sessionId);
+        break;
+    default:
+        break;
     }
+}
+
+void AudioSessionManager::DealWithSessionActive(const std::wstring& sessionId)
+{
+    
+    // TODO 判断音量，并作出调整
+    LOG_DEBUG("Session Active!");
+    // 需要通过SessionId知道当前Active的Session是哪个
+    LOG_DEBUG(L"SessionID = " + sessionId);
+    CHECK_MAP_CONTAINS_KEY_RETURN(sessionMap, sessionId);
+    // 获取音量
+    CComPtr<ISimpleAudioVolume> simpleVolume = nullptr;
+    HRESULT hr = sessionMap[sessionId]->QueryInterface(&simpleVolume);
+    CHECK_HR_AND_NULLPTR(hr, simpleVolume, "Get ISimpleAudioVolume Failed!");
+    CComPtr<IChannelAudioVolume> channelVolume = nullptr;
+    hr = sessionMap[sessionId]->QueryInterface(&channelVolume);
+    CHECK_HR_AND_NULLPTR(hr, simpleVolume, "Get IChannelAudioVolume Failed!");
+    float volume{ 0.0f };
+    hr = simpleVolume->GetMasterVolume(&volume);
+    CHECK_HR(hr, "GetMasterVolume Failed!");
+    LOG_DEBUG("This session masterVolume = " + std::to_string(volume));
+    hr = channelVolume->GetChannelVolume(0, &volume);
+    CHECK_HR(hr, "GetChannelVolume Failed!");
+    LOG_DEBUG("This session ChannelVolume = " + std::to_string(volume));
+    CComPtr<IAudioStreamVolume> streamVolume = nullptr;
+    hr = sessionMap[sessionId]->QueryInterface(&streamVolume);
+    CHECK_HR_AND_NULLPTR(hr, streamVolume, "Get IAudioStreamVolume Failed!");
+    hr = streamVolume->GetChannelVolume(1, &volume);
+    CHECK_HR(hr, "GetChannelVolume Failed!");
+    LOG_DEBUG("This session StreamVolume = " + std::to_string(volume));
+}
+
+void AudioSessionManager::DealWithSessionInactive(const std::wstring& sessionId)
+{
+    LOG_DEBUG("Session Inactive!");
+}
+
+void AudioSessionManager::DealWithSessionExpired(const std::wstring& sessionId)
+{
+    LOG_DEBUG("Session Expired!");
 }

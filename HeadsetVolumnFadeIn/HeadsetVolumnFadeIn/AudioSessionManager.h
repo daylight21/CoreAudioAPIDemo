@@ -27,12 +27,19 @@ private:
     void OnSessionCreated(CComPtr<IAudioSessionControl> session);
     // 音频流状态改变事件回调函数
     void OnSessionStateChange(AudioSessionState state, const std::wstring& sessionId);
+    // 处理音频流Active事件
+    void DealWithSessionActive(const std::wstring& sessionId);
+    // 处理音频流Inactive事件
+    void DealWithSessionInactive(const std::wstring& sessionId);
+    // 处理音频流Expired事件
+    void DealWithSessionExpired(const std::wstring& sessionId);
 
     CComPtr<IAudioSessionManager2> sessionManager{ nullptr };
     CComPtr<IMMDevice> device{ nullptr };
     CComPtr<IMMDeviceEnumerator> enumerator{ nullptr };
     CComPtr<NewSessionNotifier> sessionCreatedNotifier{ nullptr };
-    std::map<CComPtr<IAudioSessionControl>, CComPtr<SessionEventNotifier>> sessionPairs;
+    std::map<CComPtr<IAudioSessionControl2>, CComPtr<SessionEventNotifier>> sessionPairs;
+    std::map<std::wstring, CComPtr<IAudioSessionControl2>> sessionMap;
     bool initFlag{ false };
 };
 

@@ -5,11 +5,13 @@
 SessionEventNotifier::SessionEventNotifier(const std::wstring& id) : sessionId(id)
 {
     LOG_DEBUG("SessionEventNotifier Created");
+    LOG_DEBUG(L"sessionId = " + sessionId);
 }
 
 SessionEventNotifier::~SessionEventNotifier()
 {
     LOG_DEBUG("SessionEventNotifier Destroyed");
+    LOG_DEBUG(L"sessionId = " + sessionId);
 }
 
 HRESULT __stdcall SessionEventNotifier::QueryInterface(REFIID riid, void **ppvObject)
