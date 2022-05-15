@@ -36,14 +36,32 @@ bool AudioSessionManager::Init()
     CHECK_HR_AND_NULLPTR_RETURN(hr, enumerator, false, "CoCreateInstance failed");
     hr = enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &device);
     CHECK_HR_AND_NULLPTR_RETURN(hr, device, false, "GetDefaultAudioEndpoint failed");
-    if (!RegNotifierForSessions()) {
-        LOG_ERROR("RegNotifierForSessions Failed!");
-    }
+    hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void**)&audioClient);
+    CHECK_HR_AND_NULLPTR_RETURN(hr, audioClient, false, "Activate audioClient failed");
+    WAVEFORMATEX* wfx = nullptr;
+    hr = audioClient->GetMixFormat(&wfx);
+    CHECK_HR_AND_NULLPTR_RETURN(hr, wfx, false, "GetMixFormat failed");
+    REFERENCE_TIME requestedDuration = 100;
+    hr = audioClient->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        requestedDuration,
+        0,
+        wfx,
+        NULL);
+    CHECK_HR_RETURN(hr, false, "Initialize audioClient!");
+    CComPtr<IAudioCaptureClient> captureClient{ nullptr };
+    hr = audioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&captureClient);
+    CHECK_HR_AND_NULLPTR_RETURN(hr, captureClient, false, "GetService failed");
+    // hr = audioClient->Start();
+    // TODO capture Loopback Data
+    // hr = audioClient->Stop();
     return true;
 }
 
 bool AudioSessionManager::Uninit()
 {
+    audioClient = nullptr;
     HRESULT hr = sessionManager->UnregisterSessionNotification(sessionCreatedNotifier);
     if (hr != S_OK) {
         LOG_ERROR("UnregisterSessionNotification failed!");
@@ -148,7 +166,6 @@ void AudioSessionManager::OnSessionStateChange(AudioSessionState state, const st
 
 void AudioSessionManager::DealWithSessionActive(const std::wstring& sessionId)
 {
-    
     // TODO 判断音量，并作出调整
     LOG_DEBUG("Session Active!");
     // 需要通过SessionId知道当前Active的Session是哪个

@@ -38,6 +38,7 @@ private:
     CComPtr<IMMDevice> device{ nullptr };
     CComPtr<IMMDeviceEnumerator> enumerator{ nullptr };
     CComPtr<NewSessionNotifier> sessionCreatedNotifier{ nullptr };
+    CComPtr<IAudioClient> audioClient{ nullptr };
     std::map<CComPtr<IAudioSessionControl2>, CComPtr<SessionEventNotifier>> sessionPairs;
     std::map<std::wstring, CComPtr<IAudioSessionControl2>> sessionMap;
     bool initFlag{ false };
