@@ -3,6 +3,7 @@
 #include "NewSessionNotifier.h"
 #include <map>
 #include <memory>
+#include <atomic>
 #include <mmdeviceapi.h>
 
 class AudioSessionManager
@@ -17,6 +18,10 @@ public:
     bool Uninit();
 
 private:
+    // 监听Loopback数据，涉及到多线程，是否采用线程池？
+    void ListenSessionLoopback(std::atomic_bool& state);
+    // 处理Loopback数据
+    void OnCaptureLoopbackData(LPBYTE pData, INT dataLen);
     // 为当前所有会话注册事件通知器
     bool RegNotifierForSessions();
     // 添加新音频流事件的监听
@@ -38,9 +43,9 @@ private:
     CComPtr<IMMDevice> device{ nullptr };
     CComPtr<IMMDeviceEnumerator> enumerator{ nullptr };
     CComPtr<NewSessionNotifier> sessionCreatedNotifier{ nullptr };
-    CComPtr<IAudioClient> audioClient{ nullptr };
     std::map<CComPtr<IAudioSessionControl2>, CComPtr<SessionEventNotifier>> sessionPairs;
     std::map<std::wstring, CComPtr<IAudioSessionControl2>> sessionMap;
     bool initFlag{ false };
+    std::atomic_bool state{ true };
 };
 

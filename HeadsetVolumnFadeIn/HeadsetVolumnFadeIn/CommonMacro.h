@@ -6,6 +6,12 @@ if (hr != S_OK) { \
     return state; \
 }
 
+#define CHECK_HR_BREAK(hr, str) \
+if (hr != S_OK) { \
+    LOG_ERROR(str); \
+    break; \
+}
+
 #define CHECK_HR(hr, str) \
 if (hr != S_OK) { \
     LOG_ERROR(str); \
@@ -28,6 +34,12 @@ if (ptr == nullptr) { \
 if (ptr == nullptr) { \
     LOG_ERROR(str); \
     continue; \
+}
+
+#define CHECK_NULLPTR(ptr, str) \
+if (ptr == nullptr) { \
+    LOG_ERROR(str); \
+    return; \
 }
 
 #define CHECK_HR_AND_NULLPTR_RETURN(hr, ptr, state, str) \

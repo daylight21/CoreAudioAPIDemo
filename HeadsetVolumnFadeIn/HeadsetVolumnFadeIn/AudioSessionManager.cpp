@@ -2,12 +2,18 @@
 #include "AudioSessionManager.h"
 #include "CommonMacro.h"
 #include "Logger.h"
+#include <avrt.h>
+#include <thread>
+
+namespace {
+    constexpr long long REFTIMES_PER_SEC = 10000000;
+    constexpr long long REFTIMES_PER_MILLSEC = 10000;
+}
 
 AudioSessionManager::AudioSessionManager()
 {
     LOG_DEBUG("AudioSessionManager ctor");
 }
-
 
 AudioSessionManager::~AudioSessionManager()
 {
@@ -36,32 +42,16 @@ bool AudioSessionManager::Init()
     CHECK_HR_AND_NULLPTR_RETURN(hr, enumerator, false, "CoCreateInstance failed");
     hr = enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &device);
     CHECK_HR_AND_NULLPTR_RETURN(hr, device, false, "GetDefaultAudioEndpoint failed");
-    hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void**)&audioClient);
-    CHECK_HR_AND_NULLPTR_RETURN(hr, audioClient, false, "Activate audioClient failed");
-    WAVEFORMATEX* wfx = nullptr;
-    hr = audioClient->GetMixFormat(&wfx);
-    CHECK_HR_AND_NULLPTR_RETURN(hr, wfx, false, "GetMixFormat failed");
-    REFERENCE_TIME requestedDuration = 100;
-    hr = audioClient->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK,
-        requestedDuration,
-        0,
-        wfx,
-        NULL);
-    CHECK_HR_RETURN(hr, false, "Initialize audioClient!");
-    CComPtr<IAudioCaptureClient> captureClient{ nullptr };
-    hr = audioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&captureClient);
-    CHECK_HR_AND_NULLPTR_RETURN(hr, captureClient, false, "GetService failed");
-    // hr = audioClient->Start();
-    // TODO capture Loopback Data
-    // hr = audioClient->Stop();
+    if (!RegNotifierForSessions()) {
+        LOG_ERROR("RegNotifierForSessions Failed!");
+        return false;
+    }
     return true;
 }
 
 bool AudioSessionManager::Uninit()
 {
-    audioClient = nullptr;
+    state = false;
     HRESULT hr = sessionManager->UnregisterSessionNotification(sessionCreatedNotifier);
     if (hr != S_OK) {
         LOG_ERROR("UnregisterSessionNotification failed!");
@@ -77,6 +67,107 @@ bool AudioSessionManager::Uninit()
     device = nullptr;
     enumerator = nullptr;
     return true;
+}
+
+void AudioSessionManager::ListenSessionLoopback(std::atomic_bool& state)
+{
+    LOG_DEBUG("ENTER ListenSessionLoopback");
+    CComPtr<IAudioClient> audioClient{ nullptr };
+    HRESULT hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void**)&audioClient);
+    CHECK_HR_AND_NULLPTR(hr, audioClient, "Activate audioClient failed");
+    // 获取混音格式
+    WAVEFORMATEX* waveFormat = nullptr;
+    hr = audioClient->GetMixFormat(&waveFormat);
+    CHECK_HR_AND_NULLPTR(hr, waveFormat, "GetMixFormat failed");
+    // 初始化AudioClient
+    hr = audioClient->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        0,
+        0,
+        waveFormat,
+        NULL);
+    CHECK_HR(hr, "Initialize audioClient!");
+
+    // 获取采样时间
+    auto requestedDuration = static_cast<REFERENCE_TIME>(REFTIMES_PER_SEC);
+    UINT32 bufferFrameNums{ 0 };
+    hr = audioClient->GetBufferSize(&bufferFrameNums);
+    CHECK_HR(hr, "GetBufferSize Failed!");
+    auto actualDuration = static_cast<REFERENCE_TIME>(REFTIMES_PER_SEC * bufferFrameNums / waveFormat->nSamplesPerSec);
+
+    CComPtr<IAudioCaptureClient> captureClient{ nullptr };
+    hr = audioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&captureClient);
+    CHECK_HR_AND_NULLPTR(hr, captureClient, "GetService failed");
+    // 提高音频播放线程的优先级
+    DWORD taskIndex{ 0 };
+    HANDLE audioTaskHandle = AvSetMmThreadCharacteristics(L"Audio", &taskIndex);
+    CHECK_NULLPTR(audioTaskHandle, "AvSetMmThreadCharacteristics Failed");
+    // 开始监控Loopback数据
+    hr = audioClient->Start();
+    CHECK_HR(hr, "Start Failed!");
+    bool started = false;
+    // 使用CreateEvent来做同步也可以
+    UINT32 nextPackerSize{ 0 };
+    BYTE* loopbackData{ nullptr };
+    UINT32 numFramesToRead{ 0 };
+    DWORD dwFlags{ 0 };
+    while (state) {
+        Sleep(actualDuration / REFTIMES_PER_MILLSEC / 2);
+        hr = captureClient->GetNextPacketSize(&nextPackerSize);
+        CHECK_HR_BREAK(hr, "GetNextPacketSize Failed!");
+        while (nextPackerSize != 0) {
+            hr = captureClient->GetBuffer(
+                &loopbackData,
+                &numFramesToRead,
+                &dwFlags,
+                nullptr,
+                nullptr
+            );
+            CHECK_HR_BREAK(hr, "captureClient GetBuffer Failed!");
+            if (dwFlags & AUDCLNT_BUFFERFLAGS_SILENT) {
+                loopbackData = NULL;
+            }
+            OnCaptureLoopbackData(loopbackData, numFramesToRead * waveFormat->nBlockAlign);
+            captureClient->ReleaseBuffer(numFramesToRead);
+            hr = captureClient->GetNextPacketSize(&nextPackerSize);
+            CHECK_HR_BREAK(hr, "GetNextPacketSize Failed!");
+        }
+    }
+    if (audioTaskHandle != nullptr) {
+        AvRevertMmThreadCharacteristics(audioTaskHandle);
+        audioTaskHandle = nullptr;
+    }
+    // TODO 资源可能泄露
+    if (waveFormat != nullptr) {
+        CoTaskMemFree(waveFormat);
+        waveFormat = nullptr;
+    }
+    if (audioClient != nullptr) {
+        if (started) {
+            audioClient->Stop();
+        }
+    }
+    LOG_DEBUG("QUIT ListenSessionLoopback");
+}
+
+void AudioSessionManager::OnCaptureLoopbackData(LPBYTE pData, INT dataLen)
+{
+    LOG_DEBUG("Data Length = " + std::to_string(dataLen));
+    // TODO 读取PCM数据音量算法
+    short tmp = 0;
+    int sum = 0;
+    short* addr = (short*)pData;
+    for (int i = 0; i < dataLen; i += 1) {
+        memcpy(&tmp, addr + i, sizeof(short));
+        if (&tmp != nullptr)
+            sum += abs(tmp);
+    }
+    sum = sum / (dataLen / 2);
+    if (sum) {
+        int db = (int)(20.0 * log10(sum));
+        LOG_DEBUG("THIS FRAME VOL = " + std::to_string(db));
+    }
 }
 
 bool AudioSessionManager::RegNotifierForSessions()
@@ -166,31 +257,14 @@ void AudioSessionManager::OnSessionStateChange(AudioSessionState state, const st
 
 void AudioSessionManager::DealWithSessionActive(const std::wstring& sessionId)
 {
-    // TODO 判断音量，并作出调整
+    // 判断音量，并作出调整
     LOG_DEBUG("Session Active!");
     // 需要通过SessionId知道当前Active的Session是哪个
     LOG_DEBUG(L"SessionID = " + sessionId);
     CHECK_MAP_CONTAINS_KEY_RETURN(sessionMap, sessionId);
     // 获取音量
-    CComPtr<ISimpleAudioVolume> simpleVolume = nullptr;
-    HRESULT hr = sessionMap[sessionId]->QueryInterface(&simpleVolume);
-    CHECK_HR_AND_NULLPTR(hr, simpleVolume, "Get ISimpleAudioVolume Failed!");
-    CComPtr<IChannelAudioVolume> channelVolume = nullptr;
-    hr = sessionMap[sessionId]->QueryInterface(&channelVolume);
-    CHECK_HR_AND_NULLPTR(hr, simpleVolume, "Get IChannelAudioVolume Failed!");
-    float volume{ 0.0f };
-    hr = simpleVolume->GetMasterVolume(&volume);
-    CHECK_HR(hr, "GetMasterVolume Failed!");
-    LOG_DEBUG("This session masterVolume = " + std::to_string(volume));
-    hr = channelVolume->GetChannelVolume(0, &volume);
-    CHECK_HR(hr, "GetChannelVolume Failed!");
-    LOG_DEBUG("This session ChannelVolume = " + std::to_string(volume));
-    CComPtr<IAudioStreamVolume> streamVolume = nullptr;
-    hr = sessionMap[sessionId]->QueryInterface(&streamVolume);
-    CHECK_HR_AND_NULLPTR(hr, streamVolume, "Get IAudioStreamVolume Failed!");
-    hr = streamVolume->GetChannelVolume(1, &volume);
-    CHECK_HR(hr, "GetChannelVolume Failed!");
-    LOG_DEBUG("This session StreamVolume = " + std::to_string(volume));
+    std::thread th(std::bind(&AudioSessionManager::ListenSessionLoopback, this, std::ref(state)));
+    th.detach();
 }
 
 void AudioSessionManager::DealWithSessionInactive(const std::wstring& sessionId)
